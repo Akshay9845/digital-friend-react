@@ -6,6 +6,7 @@ import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/componen
 import { Send } from "lucide-react";
 import ChatMessage from "@/components/ChatMessage";
 import { useToast } from "@/components/ui/use-toast";
+import { supabase } from "@/integrations/supabase/client";
 
 interface Message {
   id: string;
@@ -24,9 +25,10 @@ const Index = () => {
     },
   ]);
   const [inputValue, setInputValue] = useState("");
+  const [isLoading, setIsLoading] = useState(false);
   const { toast } = useToast();
 
-  const handleSendMessage = () => {
+  const handleSendMessage = async () => {
     if (!inputValue.trim()) return;
 
     // Add user message
@@ -39,21 +41,39 @@ const Index = () => {
     
     setMessages((prevMessages) => [...prevMessages, userMessage]);
     setInputValue("");
+    setIsLoading(true);
 
-    // In the future, this is where we'll integrate with the AI API
-    setTimeout(() => {
+    try {
+      // Call Supabase edge function to generate AI response
+      const { data, error } = await supabase.functions.invoke('generate-ai-response', {
+        body: JSON.stringify({ prompt: inputValue })
+      });
+
+      if (error) throw error;
+
       const aiMessage: Message = {
         id: (Date.now() + 1).toString(),
-        content: "This is a placeholder response. Soon I'll be powered by AI!",
+        content: data.generatedText,
         sender: "ai",
         timestamp: new Date(),
       };
+
       setMessages((prevMessages) => [...prevMessages, aiMessage]);
+      
       toast({
         title: "Message received",
-        description: "Your message has been sent successfully.",
+        description: "AI response generated successfully.",
       });
-    }, 1000);
+    } catch (error) {
+      console.error('Error generating AI response:', error);
+      toast({
+        title: "Error",
+        description: "Failed to generate AI response.",
+        variant: "destructive"
+      });
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const handleKeyPress = (e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -72,6 +92,11 @@ const Index = () => {
           {messages.map((message) => (
             <ChatMessage key={message.id} message={message} />
           ))}
+          {isLoading && (
+            <div className="flex justify-center items-center">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+            </div>
+          )}
         </CardContent>
         <CardFooter className="border-t p-4">
           <div className="flex w-full gap-2">
@@ -81,8 +106,12 @@ const Index = () => {
               onChange={(e) => setInputValue(e.target.value)}
               onKeyPress={handleKeyPress}
               className="flex-1"
+              disabled={isLoading}
             />
-            <Button onClick={handleSendMessage} disabled={!inputValue.trim()}>
+            <Button 
+              onClick={handleSendMessage} 
+              disabled={!inputValue.trim() || isLoading}
+            >
               <Send className="h-4 w-4 mr-2" />
               Send
             </Button>
@@ -94,3 +123,4 @@ const Index = () => {
 };
 
 export default Index;
+
